@@ -1,6 +1,7 @@
 package plg_starter_http
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -14,25 +15,28 @@ func init() {
 	Hooks.Register.Starter(Start)
 }
 
-func Start(r *mux.Router) {
+func Start(ctx context.Context, r *mux.Router) {
 	Log.Info("[http] starting ...")
 	port := Config.Get("general.port").Int()
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
-	go ensureAppHasBooted(
-		fmt.Sprintf("http://127.0.0.1:%d%s", port, WithBase("/about")),
-		fmt.Sprintf("[http] listening on :%d", port),
-	)
-	if err := srv.ListenAndServe(); err != nil {
+	go func() {
+		ensureAppHasBooted(
+			fmt.Sprintf("http://127.0.0.1:%d%s", port, WithBase("/about")),
+			fmt.Sprintf("[http] listening on :%d", port),
+		)
+		<-ctx.Done()
+		srv.Shutdown(context.Background())
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		Log.Error("error: %v", err)
-		return
 	}
 }
 
 func ensureAppHasBooted(address string, message string) {
-	for i := 0; i > 10; i++ {
+	for i := 0; i < 10; i++ {
 		if i > 10 {
 			Log.Warning("[http] didn't boot")
 			break
